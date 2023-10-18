@@ -4,8 +4,8 @@ import base64
 import webbrowser
 
 
-client_id = "9f03a121933946b697c1a34194df6440"
-client_secret = "83b47bf1e8ab4dbaab75ab20efacbe3d"
+client_id = "xx"
+client_secret = "xx"
 
 auth_headers = {
     "client_id": client_id,
