@@ -8,3 +8,4 @@ Bienvenue sur ce projet d'analyse des écoutes musciales sur Spotify.
 2nd part : Extraction des données
 
 3nd part : Restitution grâce à la dataviz
+![image](https://github.com/ah-portfolio/Spotify_Analytics/assets/110063004/4e4828cc-c731-41b5-ab82-190ce0510d23)
