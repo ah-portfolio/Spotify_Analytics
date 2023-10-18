@@ -1,11 +1,11 @@
 import base64
 import requests
 
-client_id = '9f03a121933946b697c1a34194df6440'
+client_id = 'xx'
 
-client_secret = '83b47bf1e8ab4dbaab75ab20efacbe3d'
+client_secret = 'xx'
 
-code='AQBN1a8d6p-DbTuuk1rAw11EH_4_9MhDpnXVCDr619XequiLZzJSQyLMke-3DLfwDfqWxrIVffPZJHgIal-E0SEWjQfthLNMhCQg4mkE0lQJrd8OR6NK9tId7cwmeR_UtnitJmwNFHLOtgHiPNORDK9eSxnEhpe_KuRajyQxDP8UfsabsgPgqtodhsif'
+code='xx'
 
 encoded_credentials = base64.b64encode(client_id.encode() + b':' + client_secret.encode()).decode("utf-8")
 
