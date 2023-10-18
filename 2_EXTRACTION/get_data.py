@@ -1,101 +1,153 @@
 import requests
-import json
 import base64
+from dotenv import load_dotenv
+import os
+import base64
+import json
 import pandas as pd
+import csv  
+import boto3
+from io import StringIO
+import io
+import datetime
 from datetime import datetime, timedelta
+from azure.storage.blob import BlobServiceClient
 
+#GET THE NEW TOKEN THANKS TO THE REFRESH TOKEN
+def get_token(a):
+    load_dotenv()
+    client_id=os.getenv("CLIENT_ID")
+    client_secret=os.getenv("CLIENT_SECRET")
+    token_url = "https://accounts.spotify.com/api/token"
 
-########################################################
-####### FIRST STEP #####################################
-####### GET THE ACCESS TOKEN WITH THE REFRESH TOKEN ############
+    encoded_credentials = base64.b64encode(client_id.encode() + b':' + client_secret.encode()).decode("utf-8")
+    headers = {
+        "Authorization": "Basic " + encoded_credentials,
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
 
-client_id = 'xx'
-client_secret = 'xx'
-
-refresh_token = 'xx'
-
-encoded_credentials = base64.b64encode(client_id.encode() + b':' + client_secret.encode()).decode("utf-8")
-
-token_headers = {
-    "Authorization": "Basic " + encoded_credentials,
-    "Content-Type": "application/x-www-form-urlencoded"
-}
-
-token_data = {
-    "grant_type": "refresh_token",
-    'refresh_token' : refresh_token,
-    "redirect_uri": "http://localhost:8080/"
-}
-
-r = requests.post("https://accounts.spotify.com/api/token", data=token_data, headers=token_headers)
-
-
-access_token = r.json()['access_token']
-
-
-
-
-########################################################
-####### SECOND STEP #####################################
-####### GET THE DATA############
-
-
-limitation = 3 #Nombre de titres a extraire (max 50)
-
-user_headers = {
-    "Authorization": "Bearer " + access_token,
-    "Content-Type": "application/json"
-}
-
-user_params = {
-    "limit": limitation
-}
-
-
-user_tracks_response = requests.get("https://api.spotify.com/v1/me/player/recently-played", params=user_params, headers=user_headers)
-
-
-
-items = user_tracks_response.json()['items']
-
-
-TRACK_NAME = []
-ALBUM = []
-ALBUM_IMAGE = []
-ARTIST = []
-PLAYED_AT_GMT = []
-PLAYED_AT_FR = []
-POPULARITY = []
-
-#INSERT DATA IN LISTS
-for i in range (0,len(items)):
-    ARTIST.append(items[i]['track']['artists'][0]['name']) #On prend le 1er artiste du featuring
-    TRACK_NAME.append(items[i]['track']['name'])
-    ALBUM.append(items[i]['track']['album']['name'])
-    ALBUM_IMAGE.append(items[i]['track']['album']['images'][1]['url'])
-    PLAYED_AT_GMT.append(items[i]['played_at'])
-    POPULARITY.append(items[i]['track']['popularity'])
- 
- 
- 
-#CONVERT GMT DATETIME TO FR DATETIME
-for el in PLAYED_AT_GMT :
-    str_gmt = el[0:19].replace('T',' ')
-    datetime_gmt = datetime.strptime(str_gmt, '%Y-%m-%d %H:%M:%S')
-    datetime_fr = datetime_gmt + timedelta(hours=2)
-    PLAYED_AT_FR.append(str(datetime_fr))
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token":a
+    }
     
+    result=requests.post(token_url,headers=headers,data=data)
+    json_result = json.loads(result.content)
+    token = json_result.get('access_token')
+    return(token)
 
-df = pd.DataFrame()
+load_dotenv()
 
-df['PLAYED_AT_GMT)']  = PLAYED_AT_GMT
-df['PLAYED_AT_FR']  = PLAYED_AT_FR
-df['TRACK_NAME']  = TRACK_NAME
-df['ARTIST']  = ARTIST
-df['ALBUM']  = ALBUM
-df['ALBUM_IMAGE']  = ALBUM_IMAGE
-df['POPULARITY']  = POPULARITY
+refresh_t=os.getenv("refresh_t")
 
-print(df)
+token = get_token(refresh_t)
+
+##GET DATA REQUEST
+
+def get_datas():
+    user_headers = {
+        "Authorization": "Bearer " + str(token),
+        "Content-Type": "application/json"
+    }
+    user_params = {
+        "limit": 50
+    }
+
+    user_tracks_response = requests.get("https://api.spotify.com/v1/me/player/recently-played", params=user_params, headers=user_headers)
+
+    datas = user_tracks_response.json()
+
+    return(datas)
+
+datas = get_datas()
+
+#REFINE DATA 
+
+headers = ['date_playing','hour_playing','Track_title', 'Track_Singer', 'Track_Album','Album_release_date','Track_popularity']
+
+data=[]
+
+for i in range (50):
+    data.append( [datas['items'][int(i)]['played_at'].split('T')[0],
+    datas['items'][int(i)]['played_at'].split('T')[1].split('.')[0],
+    datas['items'][int(i)]['track']['name'],
+    datas['items'][int(i)]['track']['artists'][int(0)]['name'],
+    datas['items'][int(i)]['track']['album']['name'],
+    datas['items'][int(i)]['track']['album']['release_date'],
+    datas['items'][int(i)]['track']['popularity']
+    ])
 
 
+df = pd.DataFrame(data,columns=headers)
+
+# current date and time plus one hour due to time zone difference
+
+df["played_at"] = pd.to_datetime(df['date_playing'] + ' ' + df['hour_playing'])
+
+df["played_at"] = df["played_at"] + timedelta(hours=1, minutes=0) 
+
+
+#transform date_playing into date format
+
+
+#Filter on last 60 minute datas
+deltaTime = datetime.today() - timedelta(hours=1, minutes=0)
+df = df.loc[(df['played_at'] >= deltaTime)]
+
+df = df.drop('played_at', axis=1)
+            
+
+##UPLOAD REFINE DATA ON S3
+#date_of_upload = datetime.now()
+# region_name=os.getenv("region_name")
+# aws_access_key_id=os.getenv("aws_access_key_id")
+# aws_secret_access_key=os.getenv("aws_secret_access_key")
+
+
+# s3_bucket = 'spotify-analytics'
+# s3_client = boto3.client("s3",
+#                   region_name=region_name,
+#                   aws_access_key_id=aws_access_key_id,
+#                   aws_secret_access_key=aws_secret_access_key)
+
+# with io.StringIO() as csv_buffer:
+#     df.to_csv(csv_buffer, index=False)
+
+#     response = s3_client.put_object(
+#         Bucket=s3_bucket, Key=f"data{date_of_upload}.csv", Body=csv_buffer.getvalue()
+#     )
+
+
+azure_storage_account_key=os.getenv("azure_storage_account_key")
+azure_storage_account_name=os.getenv("azure_storage_account_name")
+azure_connection_string=os.getenv("azure_connection_string")
+
+
+## Create archive of previous data
+# Source
+
+def archiveToBlobStorage(source_container_name,source_file_path,target_container_name,target_file_path):
+    blob_service_client = BlobServiceClient.from_connection_string(azure_connection_string)
+    source_blob = (f"https://{azure_storage_account_name}.blob.core.windows.net/{source_container_name}/{source_file_path}")
+    copied_blob = blob_service_client.get_blob_client(target_container_name, target_file_path)
+    copied_blob.start_copy_from_url(source_blob)
+    remove_blob = blob_service_client.get_blob_client(source_container_name, source_file_path)
+    remove_blob.delete_blob()
+
+
+last_data_upload = datetime.today()
+archiveToBlobStorage("test1","data.csv","archive",f"data{last_data_upload}.csv")
+
+
+##UPLOAD REFINE DATA ON BLOB
+data_output = io.StringIO()
+data_output = df.to_csv (index=False, encoding = "utf-8",sep=';')
+
+
+def uploadToBlobStorage(file_name,df,container_name):
+   blob_service_client = BlobServiceClient.from_connection_string(azure_connection_string)
+   blob_client = blob_service_client.get_blob_client(container=container_name, blob=file_name)
+   blob_client.upload_blob(df,overwrite=True)
+
+
+uploadToBlobStorage('data.csv',data_output,'test1')
